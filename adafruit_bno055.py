@@ -24,10 +24,8 @@
 """
 ``adafruit_bno055`` - Adafruit 9-DOF Absolute Orientation IMU Fusion Breakout - BNO055
 =======================================================================================
-
 This is a CircuitPython driver for the Bosch BNO055 nine degree of freedom
 inertial measurement unit module with sensor fusion.
-
 * Author(s): Radomir Dopieralski
 """
 import time
@@ -36,7 +34,6 @@ import struct
 from micropython import const
 from adafruit_bus_device.i2c_device import I2CDevice
 from adafruit_register.i2c_struct import Struct, UnaryStruct
-
 __version__ = "0.0.0-auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_BNO055.git"
 
@@ -206,7 +203,6 @@ class BNO055:  # pylint: disable=too-many-public-methods
     def mode(self):
         """
         legend: x=on, -=off
-
         +------------------+-------+---------+------+----------+
         | Mode             | Accel | Compass | Gyro | Absolute |
         +==================+=======+=========+======+==========+
@@ -236,78 +232,49 @@ class BNO055:  # pylint: disable=too-many-public-methods
         +------------------+-------+---------+------+----------+
         | NDOF_MODE        |   X   |   X     |  X   |     X    |
         +------------------+-------+---------+------+----------+
-
         The default mode is ``NDOF_MODE``.
-
         | You can set the mode using the line below:
         | ``sensor.mode = adafruit_bno055.ACCONLY_MODE``
         | replacing ``ACCONLY_MODE`` with the mode you want to use
-
         .. data:: CONFIG_MODE
-
            This mode is used to configure BNO, wherein all output data is reset to zero and sensor
            fusion is halted.
-
         .. data:: ACCONLY_MODE
-
            In this mode, the BNO055 behaves like a stand-alone acceleration sensor. In this mode the
            other sensors (magnetometer, gyro) are suspended to lower the power consumption.
-
         .. data:: MAGONLY_MODE
-
            In MAGONLY mode, the BNO055 behaves like a stand-alone magnetometer, with acceleration
            sensor and gyroscope being suspended.
-
         .. data:: GYRONLY_MODE
-
            In GYROONLY mode, the BNO055 behaves like a stand-alone gyroscope, with acceleration
            sensor and magnetometer being suspended.
-
         .. data:: ACCMAG_MODE
-
            Both accelerometer and magnetometer are switched on, the user can read the data from
            these two sensors.
-
         .. data:: ACCGYRO_MODE
-
            Both accelerometer and gyroscope are switched on; the user can read the data from these
            two sensors.
-
         .. data:: MAGGYRO_MODE
-
            Both magnetometer and gyroscope are switched on, the user can read the data from these
            two sensors.
-
         .. data:: AMG_MODE
-
            All three sensors accelerometer, magnetometer and gyroscope are switched on.
-
         .. data:: IMUPLUS_MODE
-
            In the IMU mode the relative orientation of the BNO055 in space is calculated from the
            accelerometer and gyroscope data. The calculation is fast (i.e. high output data rate).
-
         .. data:: COMPASS_MODE
-
            The COMPASS mode is intended to measure the magnetic earth field and calculate the
            geographic direction.
-
         .. data:: M4G_MODE
-
            The M4G mode is similar to the IMU mode, but instead of using the gyroscope signal to
            detect rotation, the changing orientation of the magnetometer in the magnetic field is
            used.
-
         .. data:: NDOF_FMC_OFF_MODE
-
            This fusion mode is same as NDOF mode, but with the Fast Magnetometer Calibration turned
            ‘OFF’.
-
         .. data:: NDOF_MODE
-
            This is a fusion mode with 9 degrees of freedom where the fused absolute orientation data
            is calculated from accelerometer, gyroscope and the magnetometer.
-
         """
         return self._read_register(_MODE_REGISTER)
 
@@ -681,6 +648,54 @@ class BNO055_I2C(BNO055):
         with self.i2c_device as i2c:
             i2c.write_then_readinto(self.buffer, self.buffer, out_end=1, in_start=1)
         return self.buffer[1]
+    
+    def get_calibration(self):
+        """Return the sensor's calibration data and return it as an array of
+        22 bytes. Can be saved and then reloaded with the set_calibration function
+        to quickly calibrate from a previously calculated set of calibration data.
+        """
+        # Switch to configuration mode, as mentioned in section 3.10.4 of datasheet.
+        self.mode = CONFIG_MODE
+        # Read the 22 bytes of calibration data and convert it to a list (from
+        # a bytearray) so it's more easily serialized should the caller want to
+        # store it.
+        cal_data = list(self._read_registers(0X55, 22))
+        # Go back to normal operation mode.
+        self.mode = NDOF_MODE
+        return cal_data
+
+    def set_calibration(self, data):
+        """Set the sensor's calibration data using a list of 22 bytes that
+        represent the sensor offsets and calibration data.  This data should be
+        a value that was previously retrieved with get_calibration (and then
+        perhaps persisted to disk or other location until needed again).
+        """        
+        # Check that 22 bytes were passed in with calibration data.
+        if data is None or len(data) != 22:
+            raise ValueError('Expected a list of 22 bytes for calibration data.')
+        # Switch to configuration mode, as mentioned in section 3.10.4 of datasheet.
+        self.mode = CONFIG_MODE
+        # Set the 22 bytes of calibration data.
+        self._write_register_data(0X55, data)
+        # Go back to normal operation mode.
+        self.mode = NDOF_MODE
+        #activate external crystal
+        #self._read_register(_PAGE_REGISTER, 0x80)
+
+    def _write_register_data(self, register, data):
+        write_buffer = bytearray(1)
+        write_buffer[0] = register & 0xFF
+        write_buffer[1:len(data)+1]=data
+        with self.i2c_device as i2c:
+            i2c.write(write_buffer, start=0, end=len(write_buffer))
+
+    def _read_registers(self, register, length):
+        read_buffer = bytearray(23)
+        read_buffer[0] = register & 0xFF
+        with self.i2c_device as i2c:
+            i2c.write(read_buffer, start=0, end=1)
+            i2c.readinto(read_buffer, start=0, end=length)
+            return read_buffer[0:length]
 
 
 class BNO055_UART(BNO055):
